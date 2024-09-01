@@ -47,7 +47,7 @@ io.on("connection", (socket) => {
 });
 
 // Leer el puerto desde variables de entorno o usar el puerto 3000 por defecto
-const PORT = process.env.PORT || 3000;
+const PORT = 3000;
 server.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
 });
