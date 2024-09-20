@@ -4,11 +4,9 @@ const http = require("http");
 const { Server } = require("socket.io");
 require("dotenv").config();
 
-// Inicializar Express
 const app = express();
 const server = http.createServer(app);
 
-// Configurar CORS
 app.use(
   cors({
     origin: "*",
@@ -17,15 +15,12 @@ app.use(
   })
 );
 
-// Middleware para JSON
 app.use(express.json());
 
-// Rutas
 app.get("/status", (req, res) => {
   res.json({ message: "Servidor en funcionamiento" });
 });
 
-// Inicializar Socket.IO
 const io = new Server(server, {
   cors: {
     origin: "*",
@@ -33,20 +28,58 @@ const io = new Server(server, {
   },
 });
 
-io.on("connection", (socket) => {
-  console.log("Usuario conectado:", socket.id);
+const userStatus = {}; // Para rastrear el estado de conexión de los usuarios
 
-  socket.on("message", (message) => {   
-    console.log("Mensaje recibido:", message);
-    io.emit("message", message); // Enviar mensaje a todos los clientes
+io.of("/live-chat").on("connection", (socket) => {
+  console.log("Usuario conectado al chat en vivo");
+
+  socket.on("message", (message) => {
+    io.of("/live-chat").emit("message", message);
   });
 
   socket.on("disconnect", () => {
-    console.log("Usuario desconectado:", socket.id);
+    console.log("Usuario desconectado del chat en vivo");
   });
 });
 
-// Leer el puerto desde variables de entorno o usar el puerto 3000 por defecto
+io.of("/private-chat").on("connection", (socket) => {
+  console.log("Usuario conectado al chat privado");
+
+  // Mantener el estado del usuario en línea
+  socket.on("join", (userId) => {
+    socket.join(userId);
+    userStatus[userId] = "online";
+    io.of("/private-chat").emit("userStatus", { userId, status: "online" });
+  });
+
+  // Manejar mensajes privados
+  socket.on("privateMessage", (message) => {
+    io.of("/private-chat").to(message.targetId).emit("privateMessage", message);
+  });
+
+  // Obtener el estado del usuario
+  socket.on("getUserStatus", (userId) => {
+    const status = userStatus[userId] || "offline";
+    socket.emit("userStatus", { userId, status });
+  });
+
+  // Manejar desconexión
+  socket.on("disconnect", () => {
+    console.log("Usuario desconectado del chat privado");
+    // Actualizar el estado de conexión de todos los sockets asociados al usuario
+    for (const [userId, socketId] of Object.entries(userStatus)) {
+      if (socketId === socket.id) {
+        userStatus[userId] = "offline";
+        io.of("/private-chat").emit("userStatus", {
+          userId,
+          status: "offline",
+        });
+        break;
+      }
+    }
+  });
+});
+
 const PORT = 3000;
 server.listen(PORT, () => {
   console.log(`Servidor escuchando en el puerto ${PORT}`);
